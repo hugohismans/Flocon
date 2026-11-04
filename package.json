@@ -1,0 +1,15 @@
+{
+  "name": "flocons",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Une web app contemplative : faire pousser un flocon de neige unique par simulation physique.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "devDependencies": {
+    "vite": "^7.0.0"
+  }
+}
