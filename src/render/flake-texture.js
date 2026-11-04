@@ -92,27 +92,38 @@ export class FlakeTexture {
   /**
    * Met à jour la texture depuis l'état de la simulation.
    * @param {object} sim état de la simulation (lecture seule)
-   * @param {number} glowSteps durée de la lueur des cellules fraîches, en pas
+   * @param {object} fx effets visuels
+   * @param {number} fx.clock horloge visuelle en pas (continue après le gel)
+   * @param {number} fx.glowSteps durée de la lueur des cellules fraîches
+   * @param {number} fx.fade 0..1, disparition de la brume après le gel
+   * @param {number} fx.wave position 0..1 de l'onde de gel (-1 = aucune)
    */
-  update(sim, glowSteps) {
+  update(sim, { clock, glowSteps, fade = 0, wave = -1 }) {
     const { s, frozen, receptive, freezeStep } = sim;
     const now = sim.step;
     const color = this.cellColor;
     const vig = this.vignette;
+    const dist = this.grid.dist;
     const invOne = 1 / ONE;
     const beta = Math.max(0.05, sim.params.beta);
+    const invBeta = 1 / (beta * 1.15);
     const invGlow = 1 / Math.max(1, glowSteps);
     const W = this.grid.W;
+    const keep = 1 - fade; // brume et couche limite s'effacent au gel
+    // Onde de gel : un anneau lumineux qui parcourt le flocon du cœur aux pointes.
+    const waveR = wave >= 0 ? wave * (sim.crystalRadius + 6) : -1e9;
+    const waveW = Math.max(4, sim.crystalRadius * 0.12);
     const sparkles = this.sparkleCandidates;
     sparkles.length = 0;
 
     // Toute la grille est couverte par les pixels ; hors du disque actif la
     // vapeur est uniforme, on calcule donc un rayon un peu plus large.
     const R = Math.min(this.grid.N, sim.activeRadius + 2);
-    if (R !== this._lastR) {
+    if (R !== this._lastR || fade !== this._lastFade) {
       // La couleur hors disque actif ne change pas : on la calcule une fois.
-      this._fillAmbient();
+      this._fillAmbient(keep);
       this._lastR = R;
+      this._lastFade = fade;
     }
 
     this.grid.forEachRow(R, (start, end) => {
@@ -128,7 +139,11 @@ export class FlakeTexture {
           // cœur du flocon) est plus épaisse, donc plus lumineuse.
           const thick = 1 - Math.exp(-age / 1400);
           // Lueur des cellules récemment gelées, qui s'apaise ensuite.
-          const glow = Math.exp(-age * invGlow);
+          let glow = Math.exp(-(clock - freezeStep[i]) * invGlow);
+          if (waveR > -1e8) {
+            const dw = (dist[i] - waveR) / waveW;
+            glow = Math.max(glow, 0.85 * Math.exp(-dw * dw));
+          }
           // Glace fine = bleu profond translucide ; épaisse ou en bord = clair.
           const light = clamp01(0.18 + 0.5 * thick * thick + 1.6 * rim);
           let r = lerp(ICE_CORE[0], ICE_EDGE[0], light);
@@ -139,17 +154,25 @@ export class FlakeTexture {
           b += (255 - b) * glow;
           const a = 105 + 70 * thick + 120 * rim + 60 * glow;
           color[i] = rgba(r, g, b, a > 255 ? 255 : a);
-          if (age === 0) sparkles.push(i);
+          if (age === 0 && !sim.complete) sparkles.push(i);
         } else if (receptive[i]) {
           // Couche limite : la masse captée sert de couverture partielle,
           // ce qui adoucit le front de croissance (anticrénelage naturel).
           const c = clamp01(m);
-          color[i] = rgba(ICE_EDGE[0], ICE_EDGE[1], ICE_EDGE[2], 150 * c * c);
+          color[i] = rgba(ICE_EDGE[0], ICE_EDGE[1], ICE_EDGE[2], 150 * c * c * keep);
         } else {
           // Vapeur libre : brume très discrète, plus sombre là où le
-          // cristal l'a consommée (on « voit » la zone appauvrie).
-          const v = clamp01(m / (beta * 1.15));
-          color[i] = rgba(VAPOR[0], VAPOR[1], VAPOR[2], VAPOR_ALPHA * v * v * vig[i]);
+          // cristal l'a consommée (on « voit » la zone appauvrie), et plus
+          // claire là où le joueur a soufflé de la vapeur.
+          const v = m * invBeta;
+          let a = VAPOR_ALPHA * Math.min(1, v * v) * vig[i];
+          let rr = VAPOR[0], gg = VAPOR[1], bb = VAPOR[2];
+          if (v > 1) {
+            const e = Math.min(1.5, v - 1);
+            a += 70 * e;
+            rr += 90 * e; gg += 90 * e; bb += 50 * e;
+          }
+          color[i] = rgba(rr, gg, bb, a * keep);
         }
       }
     });
@@ -163,9 +186,9 @@ export class FlakeTexture {
     this.ctx.putImageData(this.image, 0, 0);
   }
 
-  _fillAmbient() {
+  _fillAmbient(keep = 1) {
     const { grid, vignette } = this;
-    const a = VAPOR_ALPHA / 1.15 ** 2;
+    const a = (VAPOR_ALPHA / 1.15 ** 2) * keep;
     for (let i = 0; i < grid.count; i++) {
       this.cellColor[i] = grid.dist[i] <= grid.N ? rgba(VAPOR[0], VAPOR[1], VAPOR[2], a * vignette[i]) : 0;
     }

@@ -16,7 +16,17 @@
       <p id="status" aria-live="polite"></p>
     </header>
 
-    <section class="panel" aria-label="Réglages">
+    <button id="btn-sound" class="icon-button" type="button" aria-label="Couper le son" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path class="speaker" d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" />
+        <path class="waves" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" />
+        <path class="cross" d="M16 9.5l5 5M21 9.5l-5 5" />
+      </svg>
+    </button>
+
+    <p class="hint" id="hint">Touchez près du flocon pour y souffler de la vapeur</p>
+
+    <section class="panel" id="panel" aria-label="Réglages">
       <label class="control">
         <span class="control-head">
           <span>Humidité</span>
@@ -24,7 +34,22 @@
         </span>
         <input id="humidity" type="range" min="0" max="100" step="1" />
       </label>
+      <label class="control">
+        <span class="control-head">
+          <span>Température</span>
+          <output id="temperature-value" for="temperature"></output>
+        </span>
+        <input id="temperature" type="range" min="-25" max="-1" step="0.5" />
+      </label>
+      <label class="control">
+        <span class="control-head">
+          <span>Vitesse</span>
+          <output id="speed-value" for="speed"></output>
+        </span>
+        <input id="speed" type="range" min="0" max="100" step="1" />
+      </label>
       <div class="actions">
+        <button id="btn-freeze" class="primary" type="button">Geler</button>
         <button id="btn-new" type="button">Nouveau flocon</button>
       </div>
     </section>

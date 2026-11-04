@@ -29,6 +29,8 @@ export class Scene {
     this.sparkleSprite = makeSparkleSprite(64);
     this.snow = [];
     this.time = 0;
+    this.touch = null; // halo du doigt pendant l'injection {x, y, strength}
+    this.reserved = { top: 70, bottom: 200 }; // marges d'interface (px CSS)
     this.resize();
   }
 
@@ -50,9 +52,46 @@ export class Scene {
    */
   get flakeRect() {
     const { width: w, height: h } = this.canvas;
-    const uiSpace = Math.min(h * 0.24, 200 * this.dpr);
-    const size = Math.min(w * 0.96, (h - uiSpace) * 0.94);
-    return { x: (w - size) / 2, y: (h - uiSpace - size) / 2 + 8 * this.dpr, size };
+    const top = this.reserved.top * this.dpr;
+    const bottom = this.reserved.bottom * this.dpr;
+    const avail = Math.max(h * 0.4, h - top - bottom);
+    const size = Math.min(w * 0.96, avail * 0.98);
+    return { x: (w - size) / 2, y: top + (avail - size) / 2, size };
+  }
+
+  /** Marges occupées par l'interface (en pixels CSS). */
+  setReserved(top, bottom) {
+    this.reserved = { top, bottom };
+  }
+
+  /**
+   * Point écran (pixels CSS, relatifs au canvas) -> cellule de la grille.
+   * @returns {{q: number, r: number, pan: number} | null}
+   */
+  screenToCell(cssX, cssY) {
+    const { x, y, size } = this.flakeRect;
+    const T = this.texture.size;
+    const tx = Math.floor(((cssX * this.dpr - x) / size) * T);
+    const ty = Math.floor(((cssY * this.dpr - y) / size) * T);
+    if (tx < 0 || ty < 0 || tx >= T || ty >= T) return null;
+    const i = this.texture.map[ty * T + tx];
+    if (i < 0) return null;
+    return { ...this.texture.grid.coords(i), pan: (tx / T) * 2 - 1 };
+  }
+
+  /** Position écran -> pan stéréo -1..1. */
+  panOfCell(i) {
+    const p = this.texture.cellToTexture(i);
+    return (p.x / this.texture.size) * 2 - 1;
+  }
+
+  /** Halo du doigt : null pour l'effacer. */
+  setTouch(cssX, cssY) {
+    if (cssX === null) {
+      if (this.touch) this.touch.active = false;
+      return;
+    }
+    this.touch = { x: cssX * this.dpr, y: cssY * this.dpr, strength: this.touch?.strength ?? 0, active: true };
   }
 
   /** Remet à zéro les effets liés au flocon précédent. */
@@ -66,13 +105,13 @@ export class Scene {
    * @param {number} dt secondes écoulées depuis l'image précédente
    * @param {number} glowSteps durée de la lueur en pas de simulation
    */
-  render(sim, dt, glowSteps) {
+  render(sim, dt, fx) {
     this.time += dt;
-    const { ctx, canvas, texture } = this;
+    const { ctx, texture } = this;
     const { x, y, size } = this.flakeRect;
 
-    texture.update(sim, glowSteps);
-    this._spawnSparkles(sim);
+    texture.update(sim, fx);
+    this._spawnSparkles(sim, dt, fx);
 
     // Ciel.
     ctx.globalCompositeOperation = 'source-over';
@@ -105,6 +144,7 @@ export class Scene {
 
     // Éclats.
     this._drawSparkles(dt, x, y, size / T);
+    this._drawTouch(dt);
 
     // Quelques flocons lointains passent devant, très flous.
     ctx.globalCompositeOperation = 'source-over';
@@ -114,17 +154,72 @@ export class Scene {
 
   // --- Éclats ---------------------------------------------------------
 
-  _spawnSparkles(sim) {
+  _spawnSparkles(sim, dt, fx) {
+    if (this.sparkles.length > 40) return;
+    if (sim.complete) {
+      // Flocon figé : de rares scintillements, plus nombreux pendant l'onde.
+      const rate = fx.wave >= 0 ? 14 : 0.9;
+      if (Math.random() < rate * dt) {
+        const i = this._randomEdgeCell(sim, fx.wave);
+        if (i >= 0) this._addSparkle(i);
+      }
+      return;
+    }
     const cands = this.texture.sparkleCandidates;
-    if (!cands.length || this.sparkles.length > 40) return;
+    if (!cands.length) return;
     // Préférence pour les pointes : les cellules gelées les plus lointaines.
     const d = sim.grid.dist;
     for (let k = 0; k < 2; k++) {
       const i = cands[(Math.random() * cands.length) | 0];
       if (d[i] < sim.crystalRadius * 0.7 || Math.random() > 0.35) continue;
-      const p = this.texture.cellToTexture(i);
-      this.sparkles.push({ x: p.x, y: p.y, age: 0, life: 0.9 + Math.random() * 1.2, size: 0.6 + Math.random() * 0.8, rot: Math.random() * Math.PI });
+      this._addSparkle(i);
     }
+  }
+
+  _addSparkle(i) {
+    const p = this.texture.cellToTexture(i);
+    this.sparkles.push({ x: p.x, y: p.y, age: 0, life: 0.9 + Math.random() * 1.2, size: 0.6 + Math.random() * 0.8, rot: Math.random() * Math.PI });
+  }
+
+  /**
+   * Cellule de bord du cristal tirée au hasard (échantillonnage par rejet).
+   * Pendant l'onde de gel, on la cherche près du front de l'onde.
+   */
+  _randomEdgeCell(sim, wave) {
+    const { grid } = sim;
+    const { W } = grid;
+    const Rc = sim.crystalRadius;
+    for (let tries = 0; tries < 60; tries++) {
+      const q = Math.round((Math.random() * 2 - 1) * Rc);
+      const r = Math.round((Math.random() * 2 - 1) * Rc);
+      if (Math.abs(q + r) > Rc) continue;
+      const i = grid.index(q, r);
+      if (!sim.frozen[i]) continue;
+      if (wave >= 0 && Math.abs(grid.dist[i] / (Rc + 6) - wave) > 0.08) continue;
+      const f = sim.frozen;
+      if (f[i + 1] + f[i - 1] + f[i + W] + f[i - W] + f[i + W - 1] + f[i - W + 1] < 6) return i;
+    }
+    return -1;
+  }
+
+  /** Halo doux sous le doigt pendant l'injection de vapeur. */
+  _drawTouch(dt) {
+    const t = this.touch;
+    if (!t) return;
+    t.strength += ((t.active ? 1 : 0) - t.strength) * Math.min(1, dt * (t.active ? 6 : 3));
+    if (!t.active && t.strength < 0.01) {
+      this.touch = null;
+      return;
+    }
+    const { ctx } = this;
+    const r = 46 * this.dpr * (0.85 + 0.15 * Math.sin(this.time * 5));
+    const g = ctx.createRadialGradient(t.x, t.y, 0, t.x, t.y, r);
+    g.addColorStop(0, `rgba(190, 225, 255, ${0.22 * t.strength})`);
+    g.addColorStop(1, 'rgba(190, 225, 255, 0)');
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = g;
+    ctx.fillRect(t.x - r, t.y - r, r * 2, r * 2);
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   _drawSparkles(dt, ox, oy, scale) {

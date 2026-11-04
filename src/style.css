@@ -70,19 +70,19 @@ body {
   bottom: max(16px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
   width: min(420px, calc(100% - 32px));
-  padding: 14px 18px 14px;
+  padding: 12px 18px 14px;
   border-radius: 18px;
   background: var(--glass);
   border: 1px solid var(--glass-edge);
   backdrop-filter: blur(14px) saturate(120%);
   -webkit-backdrop-filter: blur(14px) saturate(120%);
   display: grid;
-  gap: 12px;
+  gap: 6px;
 }
 
 .control {
   display: grid;
-  gap: 8px;
+  gap: 0;
 }
 
 .control-head {
@@ -105,7 +105,7 @@ input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 28px; /* grande zone tactile */
+  height: 30px; /* grande zone tactile */
   margin: 0;
   background: transparent;
   cursor: pointer;
@@ -183,4 +183,105 @@ button:active {
 button:focus-visible {
   outline: 2px solid var(--ice);
   outline-offset: 2px;
+}
+
+.actions {
+  margin-top: 6px;
+}
+
+button.primary {
+  background: linear-gradient(180deg, rgba(170, 215, 255, 0.24), rgba(120, 180, 240, 0.14));
+  border-color: rgba(170, 215, 255, 0.35);
+  box-shadow: 0 0 18px rgba(150, 205, 255, 0.12) inset;
+}
+
+button.primary:hover {
+  background: linear-gradient(180deg, rgba(170, 215, 255, 0.32), rgba(120, 180, 240, 0.2));
+}
+
+button:disabled,
+button:disabled:hover {
+  cursor: default;
+  opacity: 0.45;
+  background: rgba(159, 210, 255, 0.05);
+  border-color: var(--glass-edge);
+  box-shadow: none;
+  transform: none;
+}
+
+/* Bouton son, en haut à droite. */
+.icon-button {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  flex: none;
+  width: 44px;
+  height: 44px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  border-color: transparent;
+  background: transparent;
+  display: grid;
+  place-items: center;
+}
+
+.icon-button svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.75;
+}
+
+.icon-button .speaker {
+  fill: rgba(220, 235, 255, 0.15);
+}
+
+.icon-button .cross,
+.icon-button.muted .waves {
+  display: none;
+}
+
+.icon-button.muted .cross {
+  display: inline;
+}
+
+.icon-button.muted svg {
+  opacity: 0.45;
+}
+
+/* Indication discrète, qui s'efface après le premier souffle. */
+.hint {
+  position: fixed;
+  left: 0;
+  right: 0;
+  margin: 0;
+  bottom: calc(var(--panel-h, 230px) + max(16px, env(safe-area-inset-bottom)) + 10px);
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-dim);
+  pointer-events: none;
+  transition: opacity 1.2s;
+  animation: hint-in 2s 2.5s both;
+}
+
+.hint.hidden {
+  opacity: 0;
+}
+
+@keyframes hint-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hint {
+    animation: none;
+  }
 }
